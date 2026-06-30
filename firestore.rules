@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- Helper Functions ---
+    
+    // Checks if the user is logged in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Checks if the document belongs to the logged-in user
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // --- Expenses Collection Rules ---
+    match /expenses/{expenseId} {
+      
+      // Allow reading if the user is signed in and owns the data
+      allow read: if isSignedIn() && isOwner(resource.data.uid);
+      
+      // Allow creation if signed in and they are setting themselves as the owner
+      allow create: if isSignedIn() 
+                    && isOwner(request.resource.data.uid);
+
+      // Allow update/delete only for their own records
+      allow update, delete: if isSignedIn() && isOwner(resource.data.uid);
+    }
+
+    // --- Users Collection Rules (For Budget & Mode) ---
+    match /users/{userId} {
+      // Users can only read/write their own settings document
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // --- Default Deny ---
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
