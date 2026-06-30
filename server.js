@@ -79,8 +79,7 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
         </p>
         <p style="font-size:15px;color:#6B7280;line-height:1.7;margin:0 0 28px;">
           Our team is committed to supporting you every step of the way. Should you have any
-          questions or need assistance getting started, please don't hesitate to reach out —
-          we're here to help you succeed.
+          questions or need assistance getting started, please don't hesitate to reach out, we're here to help you succeed.
         </p>
 
         <div style="background:#FFF7F3;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
@@ -94,21 +93,21 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
         </div>
 
         <div style="text-align:center;margin-top:8px;">
-          <a href="https://radiexpense.app/dashboard"
+          <a href="https://radiexpense.slirus.com/login"
              style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;letter-spacing:0.3px;box-shadow:0 4px 20px rgba(255,107,43,0.35);">
             Go to My Dashboard →
           </a>
         </div>
 
         <p style="font-size:13px;color:#9CA3AF;text-align:center;margin-top:28px;line-height:1.6;">
-          Need help? <a href="mailto:support@radiexpense.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">support@radiexpense.com</a>
+          Need help? <a href="mailto:radiexpense@slirus.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">support@radiexpense.com</a>
         </p>
       </div>
 
       <div style="background:#F9FAFB;padding:24px 32px;text-align:center;border-top:1px solid #F3F4F6;">
         <p style="font-size:12px;color:#9CA3AF;margin:0;">
-          © ${new Date().getFullYear()} RadiExpense · Kampala, Uganda<br/>
-          You're receiving this because you registered at radiexpense.app.
+          © ${new Date().getFullYear()} RadiExpense · Lira, Uganda<br/>
+          You're receiving this because you registered on Radiexpense App.
         </p>
       </div>
     </div>
