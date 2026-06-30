@@ -1,8 +1,0 @@
-[{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "app.web.radiexpense.twa",
-        "sha256_cert_fingerprints": ["37:56:FA:DB:C9:1A:4A:B4:94:B7:61:75:FE:9F:F7:24:42:5F:39:C3:84:02:41:EB:B4:1E:CB:84:73:76:14:29"]
-      }
-    }]
