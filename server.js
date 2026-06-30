@@ -55,13 +55,44 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
   const planLabel = plan === 'pro' ? 'Pro' : 'Free';
 
   return `
-    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #f0f0f0;">
-      <div style="background:linear-gradient(135deg,#FF6B2B,#FF8C42);padding:40px 32px;text-align:center;">
-        <div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;">
-         <img src="https://raw.githubusercontent.com/Kaayamosesawal/images/main/RadiExpense.png"
-                 alt="Slirus Holding" width="72" height="72"
-                 style="display:block;border-radius:50%;
-                        border:2px solid #e2e8f0;object-fit:cover;" />
+    <!DOCTYPE html>
+    <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="x-apple-disable-message-reformatting">
+      <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
+      <title>Welcome to RadiExpense</title>
+    </head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:40px 32px;text-align:center;">
+        <!-- Logo block -->
+        <div style="margin-bottom:20px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+            <tr>
+              <td style="background:#ffffff;border-radius:16px;padding:10px 18px;display:inline-block;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align:middle;padding-right:10px;">
+                      <img src="https://raw.githubusercontent.com/Kaayamosesawal/images/main/RadiExpense.png"
+                           alt="RadiExpense"
+                           width="40" height="40"
+                           style="display:block;border-radius:10px;object-fit:cover;border:0;" />
+                    </td>
+                    <td style="vertical-align:middle;">
+                      <span style="font-size:20px;font-weight:900;color:#1F2937;letter-spacing:-0.5px;font-family:'Helvetica Neue',Arial,sans-serif;">
+                        Radi<span style="color:#FF6B2B;">Expense</span>
+                      </span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </div>
         <h1 style="color:#ffffff;font-size:26px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">
           Welcome aboard, ${firstName}!
@@ -108,12 +139,27 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
       </div>
 
       <div style="background:#F9FAFB;padding:24px 32px;text-align:center;border-top:1px solid #F3F4F6;">
-        <p style="font-size:12px;color:#9CA3AF;margin:0;">
-          © ${new Date().getFullYear()} RadiExpense · Lira, Uganda<br/>
-          You're receiving this because you registered on Radiexpense App.
+        <p style="font-size:12px;color:#9CA3AF;margin:0 0 8px;">
+          © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
+        </p>
+        <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
+          Plot 14, Lira City, Northern Region, Uganda
+        </p>
+        <p style="font-size:11px;color:#9CA3AF;margin:0 0 8px;">
+          You're receiving this because you created an account at
+          <a href="https://radiexpense.slirus.com" style="color:#FF6B2B;text-decoration:none;">radiexpense.slirus.com</a>.
+        </p>
+        <p style="font-size:11px;color:#9CA3AF;margin:0;">
+          If you didn't sign up, you can safely ignore this email &mdash; your address will not be used again.
+          &nbsp;|&nbsp;
+          <a href="https://radiexpense.slirus.com/unsubscribe?email=${email}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>
         </p>
       </div>
     </div>
+    </td></tr>
+    </table>
+    </body>
+    </html>
   `;
 }
 
@@ -139,11 +185,46 @@ app.post('/api/send-welcome-email', async (req, res) => {
   try {
     const html = buildWelcomeEmailHtml({ fullName, email, businessName, plan });
 
+    // Plain-text fallback — greatly reduces spam score
+    const text = [
+      `Welcome to RadiExpense, ${fullName.split(' ')[0]}!`,
+      '',
+      `Dear ${fullName},`,
+      '',
+      `Thank you for choosing RadiExpense and for completing the onboarding process for ${businessName}.`,
+      'We\'re grateful for the trust you\'ve placed in our platform.',
+      '',
+      'Account Summary:',
+      `  Name:     ${fullName}`,
+      `  Email:    ${email}`,
+      `  Business: ${businessName}`,
+      `  Plan:     RadiExpense ${plan === 'pro' ? 'Pro' : 'Free'}`,
+      '',
+      'Get started → https://radiexpense.slirus.com/login',
+      '',
+      'Need help? Reply to this email or contact us at radiexpense@slirus.com',
+      '',
+      '---',
+      `© ${new Date().getFullYear()} RadiExpense · Plot 14, Lira City, Northern Region, Uganda`,
+      'You received this because you created an account at radiexpense.slirus.com.',
+      `Unsubscribe: https://radiexpense.slirus.com/unsubscribe?email=${encodeURIComponent(email)}`,
+    ].join('\n');
+
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [email],
-      subject: `Welcome to RadiExpense, ${fullName.split(' ')[0]}! 🎉`,
+      reply_to: 'radiexpense@slirus.com',
+      subject: `Welcome to RadiExpense, ${fullName.split(' ')[0]}!`,
       html,
+      text,
+      headers: {
+        // Precedence: bulk tells smart clients this is transactional, not mass spam
+        'Precedence': 'bulk',
+        // List-Unsubscribe is checked by Gmail/Outlook to show the unsubscribe button
+        'List-Unsubscribe': `<https://radiexpense.slirus.com/unsubscribe?email=${encodeURIComponent(email)}>, <mailto:radiexpense@slirus.com?subject=Unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        'X-Entity-Ref-ID': `welcome-${Date.now()}`,
+      },
     });
 
     if (error) {
