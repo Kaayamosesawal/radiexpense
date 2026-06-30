@@ -58,7 +58,10 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #f0f0f0;">
       <div style="background:linear-gradient(135deg,#FF6B2B,#FF8C42);padding:40px 32px;text-align:center;">
         <div style="width:56px;height:56px;background:rgba(255,255,255,0.2);border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;">
-          <span style="font-size:28px;">📊</span>
+         <img src="https://raw.githubusercontent.com/Kaayamosesawal/images/main/RadiExpense.png"
+                 alt="Slirus Holding" width="72" height="72"
+                 style="display:block;border-radius:50%;
+                        border:2px solid #e2e8f0;object-fit:cover;" />
         </div>
         <h1 style="color:#ffffff;font-size:26px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">
           Welcome aboard, ${firstName}!
