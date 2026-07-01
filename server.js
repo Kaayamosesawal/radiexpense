@@ -14,7 +14,7 @@ if (missing.length) {
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'RadiExpense <onboarding@radiexpense.app>';
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
 const PORT = process.env.PORT || 4000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -134,7 +134,7 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
         </div>
 
         <p style="font-size:13px;color:#9CA3AF;text-align:center;margin-top:28px;line-height:1.6;">
-          Need help? <a href="mailto:radiexpense@slirus.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">support@radiexpense.com</a>
+          Need help? <a href="mailto:radiexpense@slirus.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">radiexpense@slirus.com</a>
         </p>
       </div>
 
