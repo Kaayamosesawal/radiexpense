@@ -143,7 +143,7 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
           © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
-          Plot 14, Lira City, Northern Region, Uganda
+          P.O Box 331921, Juba Road, Lira, Uganda
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 8px;">
           You're receiving this because you created an account at
