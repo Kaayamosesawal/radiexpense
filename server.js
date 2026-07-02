@@ -14,9 +14,10 @@ if (missing.length) {
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
-const PORT = process.env.PORT || 4000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
+const ADMIN_EMAIL  = process.env.ADMIN_EMAIL        || 'kaayamoses15@gmail.com';
+const PORT         = process.env.PORT               || 4000;
+const NODE_ENV     = process.env.NODE_ENV           || 'development';
 
 // ─── Allowed origins (CORS) ─────────────────────────────────────────────────
 // Supports multiple known frontends plus whatever is set in CLIENT_ORIGIN.
@@ -454,6 +455,229 @@ app.post('/api/send-upgrade-email', async (req, res) => {
       success: false,
       message: NODE_ENV === 'production'
         ? 'Failed to send upgrade email. Please try again later.'
+        : err.message,
+    });
+  }
+});
+
+
+// ─── Admin payment notification HTML builder ──────────────────────────────────
+/**
+ * Builds a rich HTML email for the admin notifying them of a new Pro
+ * subscription payment that needs verification in the MTN / Airtel portal.
+ * Includes a direct Firestore activation link placeholder and all payment
+ * details so the admin can verify and act without switching contexts.
+ */
+function buildAdminPaymentNotificationHtml({ uid, fullName, email, businessName, provider, billingCycle, amount, ussdCode, submittedAt }) {
+  const year = new Date().getFullYear();
+
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Pro Payment — Action Required</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:28px 16px;">
+  <tr><td align="center">
+  <table role="presentation" width="580" cellpadding="0" cellspacing="0"
+         style="max-width:580px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+
+    <!-- Header -->
+    <tr>
+      <td style="background:linear-gradient(135deg,#FF6B2B,#FF8C42);padding:28px 32px;text-align:center;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.75);">
+          RadiExpense · Admin Alert
+        </p>
+        <h1 style="margin:0;font-size:22px;font-weight:900;color:#ffffff;letter-spacing:-0.3px;">
+          🔔 New Pro Payment — Action Required
+        </h1>
+        <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,0.85);">
+          A user has completed payment and is waiting for Pro activation.
+        </p>
+      </td>
+    </tr>
+
+    <!-- Body -->
+    <tr>
+      <td style="padding:28px 32px;">
+
+        <!-- Urgency banner -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;margin-bottom:24px;">
+          <tr>
+            <td style="padding:14px 18px;">
+              <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;">
+                ⏳ The user is on the "Waiting for activation" screen right now. Please verify and activate as soon as possible.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Payment details table -->
+        <p style="margin:0 0 12px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;">
+          Payment Details
+        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f8fafc;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:24px;">
+          ${[
+            ['Full Name',      fullName],
+            ['Email',          email],
+            ['Business',       businessName],
+            ['Provider',       provider],
+            ['Plan',           billingCycle === 'yearly' ? 'Pro — Annual' : 'Pro — Monthly'],
+            ['Amount',         amount],
+            ['USSD Code Used', ussdCode],
+            ['User UID',       uid],
+            ['Submitted At',   submittedAt],
+          ].map(([label, value], i) => `
+          <tr style="background:${i % 2 === 0 ? '#f8fafc' : '#ffffff'};">
+            <td style="padding:11px 16px;font-size:12px;font-weight:700;color:#64748b;width:38%;border-bottom:1px solid #f1f5f9;">${label}</td>
+            <td style="padding:11px 16px;font-size:13px;font-weight:600;color:#1e293b;border-bottom:1px solid #f1f5f9;">${value || '—'}</td>
+          </tr>`).join('')}
+        </table>
+
+        <!-- Action steps -->
+        <p style="margin:0 0 12px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;">
+          Steps to Activate
+        </p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f8fafc;border-radius:10px;padding:0;margin-bottom:24px;border:1px solid #e2e8f0;">
+          ${[
+            ['1', 'Check the MTN or Airtel merchant portal / SMS statement for a payment of ' + amount + ' referencing "RadiExpense".'],
+            ['2', 'Open the Firebase Firestore console → users collection → find UID: ' + uid],
+            ['3', 'Set the following fields:  planStatus → "active"   and   paidAt → (current timestamp)'],
+            ['4', 'The user\'s screen will update automatically within seconds — no other action needed.'],
+          ].map(([n, text]) => `
+          <tr>
+            <td style="padding:12px 16px;vertical-align:top;width:32px;">
+              <span style="display:inline-block;width:24px;height:24px;background:#FF6B2B;border-radius:50%;text-align:center;line-height:24px;font-size:11px;font-weight:900;color:#ffffff;">${n}</span>
+            </td>
+            <td style="padding:12px 16px 12px 0;font-size:13px;color:#374151;border-bottom:1px solid #f1f5f9;">${text}</td>
+          </tr>`).join('')}
+        </table>
+
+        <!-- CTA button — deep link to Firestore (adjust project ID) -->
+        <div style="text-align:center;margin-bottom:24px;">
+          <a href="https://console.firebase.google.com/project/_/firestore/data/users/${uid}"
+             style="display:inline-block;background:#1e293b;color:#ffffff;font-size:14px;font-weight:900;padding:14px 32px;border-radius:50px;text-decoration:none;letter-spacing:0.3px;">
+            Open User in Firestore Console →
+          </a>
+        </div>
+
+        <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;line-height:1.6;">
+          If the payment is not found in the provider portal, do <strong>not</strong> activate.<br/>
+          Contact the user at <a href="mailto:${email}" style="color:#FF6B2B;text-decoration:none;">${email}</a> to clarify.
+        </p>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="padding:18px 32px;text-align:center;background:#f8fafc;border-top:1px solid #f1f5f9;">
+        <p style="margin:0;font-size:11px;color:#94a3b8;">
+          © ${year} RadiExpense · Internal Admin Notification · Do not forward this email.
+        </p>
+      </td>
+    </tr>
+
+  </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+}
+
+/**
+ * POST /api/notify-admin-payment
+ * Body: { uid, fullName, email, businessName, provider, billingCycle, amount, ussdCode }
+ *
+ * Called by OnboardingPro.jsx when a user taps "I've Made the Payment".
+ * Sends a rich HTML notification email to the admin (kaayamoses15@gmail.com)
+ * with all payment details and a direct link to the user's Firestore doc.
+ * The admin verifies in the MTN/Airtel portal and then sets
+ *   planStatus: 'active' + paidAt in Firestore to unlock Pro for the user.
+ */
+app.post('/api/notify-admin-payment', async (req, res) => {
+  const { uid, fullName, email, businessName, provider, billingCycle, amount, ussdCode } = req.body || {};
+
+  // Validate required fields
+  const missing = ['uid', 'fullName', 'email', 'businessName', 'provider', 'amount']
+    .filter(k => !req.body?.[k]);
+  if (missing.length) {
+    return res.status(400).json({ success: false, message: `Missing fields: ${missing.join(', ')}` });
+  }
+
+  const submittedAt = new Date().toLocaleString('en-GB', {
+    timeZone: 'Africa/Kampala',
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }) + ' EAT';
+
+  try {
+    const html = buildAdminPaymentNotificationHtml({
+      uid, fullName, email, businessName, provider,
+      billingCycle, amount, ussdCode, submittedAt,
+    });
+
+    // Plain-text version for spam compliance + admin email clients that prefer text
+    const text = [
+      '⚠️  NEW PRO PAYMENT — ACTION REQUIRED',
+      '═'.repeat(48),
+      '',
+      `Submitted at : ${submittedAt}`,
+      `Name         : ${fullName}`,
+      `Email        : ${email}`,
+      `Business     : ${businessName}`,
+      `Provider     : ${provider}`,
+      `Plan         : ${billingCycle === 'yearly' ? 'Pro Annual' : 'Pro Monthly'}`,
+      `Amount       : ${amount}`,
+      `USSD Code    : ${ussdCode || 'N/A'}`,
+      `User UID     : ${uid}`,
+      '',
+      'HOW TO ACTIVATE:',
+      '1. Verify payment in MTN/Airtel merchant portal or SMS statement.',
+      '2. Go to Firebase Firestore → users → ' + uid,
+      '3. Set:  planStatus = "active"  and  paidAt = <current timestamp>',
+      '4. The user\'s screen updates automatically — no further action needed.',
+      '',
+      'Firestore link (replace YOUR_PROJECT_ID):',
+      `https://console.firebase.google.com/project/YOUR_PROJECT_ID/firestore/data/users/${uid}`,
+      '',
+      'If payment is NOT found in the portal, do NOT activate.',
+      `Contact user at: ${email}`,
+      '',
+      '─'.repeat(48),
+      'RadiExpense · Internal Admin Notification · Do not forward.',
+    ].join('\n');
+
+    const { data, error } = await resend.emails.send({
+      from:     FROM_EMAIL,
+      to:       [ADMIN_EMAIL],
+      reply_to: email,              // Replying goes directly to the paying user
+      subject:  `🔔 New Pro Payment — ${businessName} (${provider}) · Needs Verification`,
+      html,
+      text,
+      headers: {
+        'Precedence':            'high',
+        'X-Priority':            '1',
+        'X-Entity-Ref-ID':       `admin-payment-${uid}-${Date.now()}`,
+        'X-Mailer':              'RadiExpense-Admin-Notifier/1.0',
+      },
+    });
+
+    if (error) throw new Error(error.message || 'Resend API error');
+
+    console.log(`[Admin] ✅ payment notification → ${ADMIN_EMAIL} | business: ${businessName} | uid: ${uid} | msgId: ${data?.id}`);
+    return res.status(200).json({ success: true, id: data?.id });
+
+  } catch (err) {
+    console.error(`[Admin] ❌ Failed to send payment notification | uid: ${uid} | err: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: NODE_ENV === 'production'
+        ? 'Failed to send admin notification. Payment status saved — admin will be notified separately.'
         : err.message,
     });
   }
