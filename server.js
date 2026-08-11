@@ -1,10 +1,18 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { Resend } from 'resend';
+import admin from 'firebase-admin';
+import cron from 'node-cron';
 
 // ─── Validate required environment variables on startup ───────────────────
-const REQUIRED_ENV = ['RESEND_API_KEY'];
+// FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY come from
+// a Firebase service account JSON (Project Settings → Service Accounts →
+// Generate new private key). These are required because staff-account
+// creation/removal (Firebase Auth) and the subscription-expiry sweep
+// (Firestore) can only be done with the Admin SDK — never client-side.
+const REQUIRED_ENV = ['RESEND_API_KEY', 'FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'];
 const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missing.length) {
   console.error(`[Server] ❌ Missing required environment variable(s): ${missing.join(', ')}`);
@@ -13,6 +21,21 @@ if (missing.length) {
 }
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// ─── Firebase Admin SDK ──────────────────────────────────────────────────────
+// Powers: staff login creation/reset/removal (Firebase Auth) and the
+// subscription-expiry sweep below (Firestore). FIREBASE_PRIVATE_KEY is stored
+// with literal "\n" sequences in most dashboards (Render, Vercel, etc.), so
+// it has to be un-escaped before use.
+admin.initializeApp({
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  }),
+});
+const db = admin.firestore();
+const authAdmin = admin.auth();
 
 const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL        || 'kaayamoses15@gmail.com';
@@ -144,7 +167,7 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
           © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
-          P.O Box 331921, Juba Road, Lira, Uganda
+          P.O Box 331921, Lira - Uganda
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 8px;">
           You're receiving this because you created an account at
@@ -152,9 +175,7 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0;">
           If you didn't sign up, you can safely ignore this email &mdash; your address will not be used again.
-          &nbsp;|&nbsp;
-          <a href="https://radiexpense.slirus.com/unsubscribe?email=${email}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>
-        </p>
+         
       </div>
     </div>
     </td></tr>
@@ -278,8 +299,6 @@ function buildUpgradeEmailHtml({ fullName, email, businessName }) {
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0;">
           If you believe this was sent in error, please contact us.
-          &nbsp;|&nbsp;
-          <a href="https://radiexpense.slirus.com/unsubscribe?email=${email}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>
         </p>
       </div>
     </div>
@@ -334,7 +353,7 @@ app.post('/api/send-welcome-email', async (req, res) => {
       '---',
       `© ${new Date().getFullYear()} RadiExpense · Plot 14, Lira City, Northern Region, Uganda`,
       'You received this because you created an account at radiexpense.slirus.com.',
-      `Unsubscribe: https://radiexpense.slirus.com/unsubscribe?email=${encodeURIComponent(email)}`,
+      
     ].join('\n');
 
     const { data, error } = await resend.emails.send({
@@ -347,10 +366,8 @@ app.post('/api/send-welcome-email', async (req, res) => {
       headers: {
         // Precedence: bulk tells smart clients this is transactional, not mass spam
         'Precedence': 'bulk',
-        // List-Unsubscribe is checked by Gmail/Outlook to show the unsubscribe button
-        'List-Unsubscribe': `<https://radiexpense.slirus.com/unsubscribe?email=${encodeURIComponent(email)}>, <mailto:radiexpense@slirus.com?subject=Unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        'X-Entity-Ref-ID': `welcome-${Date.now()}`,
+        // List-button
+       'X-Entity-Ref-ID': `welcome-${Date.now()}`,
       },
     });
 
@@ -423,7 +440,7 @@ app.post('/api/send-upgrade-email', async (req, res) => {
       '---',
       `© ${new Date().getFullYear()} RadiExpense · Plot 14, Lira City, Northern Region, Uganda`,
       'You received this because you upgraded your account at radiexpense.slirus.com.',
-      `Unsubscribe: https://radiexpense.slirus.com/unsubscribe?email=${encodeURIComponent(email)}`,
+      
     ].join('\n');
 
     const { data, error } = await resend.emails.send({
@@ -436,9 +453,6 @@ app.post('/api/send-upgrade-email', async (req, res) => {
       headers: {
         // Precedence: bulk tells smart clients this is transactional, not mass spam
         'Precedence': 'bulk',
-        // List-Unsubscribe is checked by Gmail/Outlook to show the unsubscribe button
-        'List-Unsubscribe': `<https://radiexpense.slirus.com/unsubscribe?email=${encodeURIComponent(email)}>, <mailto:radiexpense@slirus.com?subject=Unsubscribe>`,
-        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         'X-Entity-Ref-ID': `upgrade-${Date.now()}`,
       },
     });
@@ -460,6 +474,213 @@ app.post('/api/send-upgrade-email', async (req, res) => {
   }
 });
 
+
+// ─── Shared small helpers ───────────────────────────────────────────────────
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Auto-generates a readable-but-strong one-time password for new staff logins. */
+function generatePassword() {
+  const words = ['Radi', 'Lira', 'Kampala', 'Slirus', 'Nile', 'Pearl', 'Savanna', 'Orbit'];
+  const word = words[crypto.randomInt(0, words.length)];
+  const digits = crypto.randomInt(1000, 9999);
+  const symbol = ['!', '#', '$', '%', '@'][crypto.randomInt(0, 5)];
+  return `${word}${digits}${symbol}`;
+}
+
+const formatExpiryEAT = (date) =>
+  new Date(date).toLocaleString('en-GB', {
+    timeZone: 'Africa/Kampala',
+    weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }) + ' EAT';
+
+/**
+ * Builds the HTML body for a new team member's login-credentials email.
+ */
+function buildStaffWelcomeEmailHtml({ name, email, password, role, businessName, loginUrl }) {
+  const firstName = (name || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Your RadiExpense login</title></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:40px 32px;text-align:center;">
+        <h1 style="color:#ffffff;font-size:24px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">Welcome to the team, ${firstName}!</h1>
+        <p style="color:rgba(255,255,255,0.85);font-size:14px;margin:0;">${businessName} added you to their RadiExpense workspace.</p>
+      </div>
+      <div style="padding:36px 32px;">
+        <p style="font-size:15px;color:#374151;line-height:1.7;margin:0 0 20px;">Dear <strong>${name}</strong>,</p>
+        <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 24px;">
+          You've been added as <strong style="color:#1F2937;">${role}</strong> for <strong style="color:#1F2937;">${businessName}</strong> on RadiExpense.
+          Use the credentials below to sign in on the same login page as everyone else.
+        </p>
+        <div style="background:#FFF7F3;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
+          <p style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#9CA3AF;margin:0 0 10px;">Your login</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Email:</strong> ${email}</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Password:</strong> <span style="font-family:monospace;background:#FDECE3;padding:2px 8px;border-radius:6px;">${password}</span></p>
+          <p style="font-size:12px;color:#9CA3AF;margin:10px 0 0;">For your security, please change this password after your first sign-in.</p>
+        </div>
+        <div style="text-align:center;">
+          <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;">Sign In →</a>
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;text-align:center;margin-top:24px;">If you weren't expecting this, contact ${businessName} directly.</p>
+      </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/** Builds the HTML body for a "your password was reset" email. */
+function buildStaffPasswordResetEmailHtml({ name, email, password, role, businessName, loginUrl }) {
+  const firstName = (name || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Your password was reset</title></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:36px 32px;text-align:center;">
+        <h1 style="color:#ffffff;font-size:22px;font-weight:900;margin:0;">Your password was reset, ${firstName}</h1>
+      </div>
+      <div style="padding:36px 32px;">
+        <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 24px;">
+          ${businessName} reset your RadiExpense login (${role}). Here's your new password:
+        </p>
+        <div style="background:#FFF7F3;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Email:</strong> ${email}</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>New password:</strong> <span style="font-family:monospace;background:#FDECE3;padding:2px 8px;border-radius:6px;">${password}</span></p>
+        </div>
+        <div style="text-align:center;">
+          <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;">Sign In →</a>
+        </div>
+      </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/** Builds the HTML body for the "you were removed" notice. */
+function buildStaffRemovedEmailHtml({ name, businessName }) {
+  const firstName = (name || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;font-family:'Helvetica Neue',Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;padding:32px;">
+      <p style="font-size:15px;color:#374151;">Hi ${firstName},</p>
+      <p style="font-size:14px;color:#6B7280;line-height:1.7;">Your RadiExpense access for <strong>${businessName}</strong> has been removed and your login is no longer active. If this seems wrong, please contact ${businessName} directly.</p>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/**
+ * Builds the HTML body for the "Pro is now active" confirmation email, sent
+ * once an admin approves payment in Payment Manager — NOT at upgrade-intent
+ * time. Includes business details and the exact billing-cycle expiry so the
+ * business knows precisely when they'll need to renew.
+ */
+function buildProActivatedEmailHtml({ fullName, email, businessName, phone, address, district, billingCycle, expiresAtLabel }) {
+  const firstName = (fullName || '').trim().split(' ')[0] || 'there';
+  const cycleLabel = billingCycle === 'yearly' ? 'Yearly' : 'Monthly';
+  const location = [address, district].filter(Boolean).join(', ') || '—';
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Your RadiExpense Pro is active</title></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:40px 32px;text-align:center;">
+        <h1 style="color:#ffffff;font-size:26px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">You're live on Pro, ${firstName}! 🚀</h1>
+        <p style="color:rgba(255,255,255,0.85);font-size:15px;margin:0;">Your payment has been verified and Pro is now active.</p>
+      </div>
+      <div style="padding:40px 32px;">
+        <p style="font-size:16px;color:#374151;line-height:1.7;margin:0 0 20px;">Dear <strong>${fullName}</strong>,</p>
+        <p style="font-size:15px;color:#6B7280;line-height:1.7;margin:0 0 24px;">
+          Thank you for upgrading <strong style="color:#1F2937;">${businessName}</strong> to RadiExpense <strong style="color:#FF6B2B;">Pro</strong>.
+          We truly appreciate your trust in growing your business with us.
+        </p>
+        <div style="background:#FFF7F3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+          <p style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#9CA3AF;margin:0 0 10px;">Business details</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Business:</strong> ${businessName}</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Location:</strong> ${location}</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Contact:</strong> ${phone || '—'} · ${email}</p>
+        </div>
+        <div style="background:#1F2937;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
+          <p style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#9CA3AF;margin:0 0 10px;">Subscription</p>
+          <p style="font-size:14px;color:#F3F4F6;margin:4px 0;"><strong>Plan:</strong> Pro — ${cycleLabel}</p>
+          <p style="font-size:14px;color:#F3F4F6;margin:4px 0;"><strong>Expires:</strong> ${expiresAtLabel}</p>
+          <p style="font-size:12px;color:#9CA3AF;margin:10px 0 0;">We'll remind you by email 3 days before this date.</p>
+        </div>
+        <div style="text-align:center;margin-top:8px;">
+          <a href="https://radiexpense.slirus.com/login" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;">Go to My Dashboard →</a>
+        </div>
+      </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/** Builds the HTML body for the "expiring in 3 days" reminder email. */
+function buildExpiryReminderEmailHtml({ fullName, businessName, billingCycle, expiresAtLabel }) {
+  const firstName = (fullName || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;font-family:'Helvetica Neue',Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:#fffbeb;border-bottom:1px solid #fcd34d;padding:24px 32px;text-align:center;">
+        <p style="margin:0;font-size:13px;font-weight:900;color:#92400e;">⏳ Your RadiExpense Pro plan expires in 3 days</p>
+      </div>
+      <div style="padding:32px;">
+        <p style="font-size:15px;color:#374151;">Hi ${firstName},</p>
+        <p style="font-size:14px;color:#6B7280;line-height:1.7;">
+          <strong>${businessName}</strong>'s Pro (${billingCycle === 'yearly' ? 'Yearly' : 'Monthly'}) plan expires on
+          <strong style="color:#1F2937;">${expiresAtLabel}</strong>. Renew before then to avoid any interruption —
+          if it lapses, Pro stays usable for a further 3-day grace period, after which the account automatically
+          falls back to the Free tier (your data is always kept safe either way).
+        </p>
+        <div style="text-align:center;margin-top:20px;">
+          <a href="https://radiexpense.slirus.com/login" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:14px 36px;border-radius:50px;text-decoration:none;">Renew Now →</a>
+        </div>
+      </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/** Builds the HTML body for the "you've fallen back to Free" email. */
+function buildDowngradedEmailHtml({ fullName, businessName }) {
+  const firstName = (fullName || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;font-family:'Helvetica Neue',Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;padding:32px;">
+      <p style="font-size:15px;color:#374151;">Hi ${firstName},</p>
+      <p style="font-size:14px;color:#6B7280;line-height:1.7;">
+        <strong>${businessName}</strong>'s Pro plan expired and the 3-day grace period has now ended, so the account
+        has moved back to the Free tier. All your data — expenses, products, savings, loans — is safe and untouched.
+        You can upgrade back to Pro any time from your dashboard.
+      </p>
+      <div style="text-align:center;margin-top:20px;">
+        <a href="https://radiexpense.slirus.com/login" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:14px 36px;border-radius:50px;text-decoration:none;">Renew Pro →</a>
+      </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
 
 // ─── Admin payment notification HTML builder ──────────────────────────────────
 /**
@@ -683,6 +904,142 @@ app.post('/api/notify-admin-payment', async (req, res) => {
   }
 });
 
+// ─── POST /api/create-staff-account ────────────────────────────────────────
+// Body: { ownerUid, ownerBusinessName, name, role, email, phone, startDate, loginUrl }
+// Creates a real Firebase Auth login for a new team member (auto-generated
+// password), writes their roster doc to Firestore `staff` (scoped to
+// ownerUid — the business owner keeps admin rights over this record: they
+// can edit/delete it, the team member cannot), and emails the credentials.
+app.post('/api/create-staff-account', async (req, res) => {
+  const { ownerUid, ownerBusinessName, name, role, email, phone, startDate, loginUrl } = req.body || {};
+  const missingFields = ['ownerUid', 'name', 'role', 'email'].filter(k => !req.body?.[k]);
+  if (missingFields.length) {
+    return res.status(400).json({ error: `Missing fields: ${missingFields.join(', ')}` });
+  }
+  if (!emailPattern.test(email)) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+
+  const password = generatePassword();
+
+  try {
+    const userRecord = await authAdmin.createUser({
+      email, password, displayName: name, emailVerified: false,
+    });
+
+    const staffRef = await db.collection('staff').add({
+      uid: ownerUid,            // owner scope — used by the `where('uid', '==', ...)` query
+      createdBy: ownerUid,      // creator keeps admin rights over this record
+      authUid: userRecord.uid,
+      name, role, email, phone: phone || '', startDate: startDate || '',
+      createdAt: Date.now(),
+      attendance: [],
+    });
+
+    const html = buildStaffWelcomeEmailHtml({ name, email, password, role, businessName: ownerBusinessName || 'your team', loginUrl: loginUrl || 'https://radiexpense.slirus.com/login' });
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL, to: [email], reply_to: 'radiexpense@slirus.com',
+      subject: `Your RadiExpense login — ${ownerBusinessName || 'Team invite'}`,
+      html,
+    });
+    if (error) console.error('[Staff] ⚠️ account created but email failed:', error.message);
+
+    console.log(`[Staff] ✅ created ${email} (${role}) under owner ${ownerUid}`);
+    return res.status(200).json({ success: true, authUid: userRecord.uid, staffId: staffRef.id });
+  } catch (err) {
+    console.error('[Staff] ❌ create-staff-account failed:', err.message);
+    const message = err.code === 'auth/email-already-exists'
+      ? 'This email already has an account on RadiExpense.'
+      : (NODE_ENV === 'production' ? 'Could not create staff login.' : err.message);
+    return res.status(500).json({ error: message });
+  }
+});
+
+// ─── POST /api/reset-staff-password ────────────────────────────────────────
+// Body: { authUid, email, name, businessName, role, loginUrl }
+app.post('/api/reset-staff-password', async (req, res) => {
+  const { authUid, email, name, businessName, role, loginUrl } = req.body || {};
+  if (!authUid || !email) return res.status(400).json({ error: 'authUid and email are required.' });
+
+  const password = generatePassword();
+  try {
+    await authAdmin.updateUser(authUid, { password });
+    const html = buildStaffPasswordResetEmailHtml({ name, email, password, role, businessName: businessName || 'your team', loginUrl: loginUrl || 'https://radiexpense.slirus.com/login' });
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL, to: [email], reply_to: 'radiexpense@slirus.com',
+      subject: `Your RadiExpense password was reset`,
+      html,
+    });
+    if (error) throw new Error(error.message);
+    console.log(`[Staff] ✅ password reset for ${email}`);
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('[Staff] ❌ reset-staff-password failed:', err.message);
+    return res.status(500).json({ error: NODE_ENV === 'production' ? 'Reset failed.' : err.message });
+  }
+});
+
+// ─── POST /api/delete-staff-account ────────────────────────────────────────
+// Body: { authUid, email, name, businessName }
+// Revokes the team member's Firebase Auth login. The Firestore roster doc
+// itself is deleted client-side right after this call succeeds.
+app.post('/api/delete-staff-account', async (req, res) => {
+  const { authUid, email, name, businessName } = req.body || {};
+  if (!authUid) return res.status(400).json({ error: 'authUid is required.' });
+
+  try {
+    await authAdmin.deleteUser(authUid);
+    if (email && emailPattern.test(email)) {
+      const html = buildStaffRemovedEmailHtml({ name, businessName: businessName || 'the business' });
+      resend.emails.send({
+        from: FROM_EMAIL, to: [email], subject: 'Your RadiExpense access has been removed', html,
+      }).catch(e => console.warn('[Staff] removal notice email failed:', e.message));
+    }
+    console.log(`[Staff] ✅ deleted auth account ${authUid}`);
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    // If the Auth user is already gone, treat as success so the UI can still clean up its Firestore doc.
+    if (err.code === 'auth/user-not-found') return res.status(200).json({ success: true });
+    console.error('[Staff] ❌ delete-staff-account failed:', err.message);
+    return res.status(500).json({ error: NODE_ENV === 'production' ? 'Could not remove staff login.' : err.message });
+  }
+});
+
+// ─── POST /api/send-pro-activated-email ────────────────────────────────────
+// Body: { fullName, email, businessName, phone, address, district, billingCycle, expiresAt }
+// Called by Payment Manager right after an admin approves payment — this is
+// the "confirming and appreciating the business for upgrade to Pro" email
+// from the spec, distinct from the pre-payment nudge in /api/send-upgrade-email.
+app.post('/api/send-pro-activated-email', async (req, res) => {
+  const { fullName, email, businessName, phone, address, district, billingCycle, expiresAt } = req.body || {};
+  const missingFields = ['fullName', 'email', 'businessName', 'billingCycle', 'expiresAt'].filter(k => !req.body?.[k]);
+  if (missingFields.length) {
+    return res.status(400).json({ success: false, message: `Missing fields: ${missingFields.join(', ')}` });
+  }
+  if (!emailPattern.test(email)) {
+    return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+  }
+
+  try {
+    const expiresAtLabel = formatExpiryEAT(expiresAt);
+    const html = buildProActivatedEmailHtml({ fullName, email, businessName, phone, address, district, billingCycle, expiresAtLabel });
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL, to: [email], reply_to: 'radiexpense@slirus.com',
+      subject: `You're now on RadiExpense Pro, ${fullName.split(' ')[0]}! 🚀`,
+      html,
+    });
+    if (error) throw new Error(error.message || 'Resend API error');
+    console.log(`[Email] ✅ pro-activated email → ${email} | expires ${expiresAtLabel}`);
+    return res.status(200).json({ success: true, id: data?.id });
+  } catch (err) {
+    console.error(`[Email] ❌ Failed to send pro-activated email → ${email}:`, err.message);
+    return res.status(500).json({
+      success: false,
+      message: NODE_ENV === 'production' ? 'Failed to send confirmation email.' : err.message,
+    });
+  }
+});
+
 // ─── GET /api/health ─────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   res.status(200).json({
@@ -719,6 +1076,87 @@ app.listen(PORT, () => {
   console.log(`  From        : ${FROM_EMAIL}`);
   console.log('─────────────────────────────────────────');
 });
+
+// ─── Subscription sweep — expiry reminders + grace fallback-to-free ────────
+// Mirrors the lifecycle constants in src/utils/subscription.js (client-side
+// display only). This job is the one place that actually ENFORCES it:
+//   - 3 days before planExpiresAt  → reminder email (sent once per period)
+//   - > 3 days past planExpiresAt  → downgrade to Free + notify
+// Firestore fields written: expiryReminderSentFor (guards duplicate sends),
+// plan/planStatus (on downgrade), downgradedAt.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const GRACE_DAYS = 3;
+const REMINDER_DAYS_BEFORE = 3;
+
+async function runSubscriptionSweep() {
+  const now = Date.now();
+  let reminders = 0, downgrades = 0, checked = 0;
+  try {
+    const snap = await db.collection('users')
+      .where('plan', '==', 'pro')
+      .where('planStatus', '==', 'active')
+      .get();
+
+    for (const docSnap of snap.docs) {
+      const u = docSnap.data();
+      checked++;
+      if (!u.planExpiresAt) continue;
+      const expiresAt = u.planExpiresAt.toDate ? u.planExpiresAt.toDate() : new Date(u.planExpiresAt);
+      const expiresAtKey = expiresAt.toISOString();
+      const daysUntilExpiry = Math.ceil((expiresAt.getTime() - now) / DAY_MS);
+      const daysPastExpiry = Math.floor((now - expiresAt.getTime()) / DAY_MS);
+
+      // 3-day-out reminder — guarded so it only fires once per billing period.
+      if (daysUntilExpiry <= REMINDER_DAYS_BEFORE && daysUntilExpiry >= 0 && u.expiryReminderSentFor !== expiresAtKey && u.email) {
+        try {
+          const html = buildExpiryReminderEmailHtml({
+            fullName: u.fullName, businessName: u.businessName,
+            billingCycle: u.billingCycle, expiresAtLabel: formatExpiryEAT(expiresAt),
+          });
+          await resend.emails.send({
+            from: FROM_EMAIL, to: [u.email], reply_to: 'radiexpense@slirus.com',
+            subject: `⏳ Your RadiExpense Pro plan expires in ${Math.max(daysUntilExpiry, 0)} day(s)`,
+            html,
+          });
+          await docSnap.ref.update({ expiryReminderSentFor: expiresAtKey });
+          reminders++;
+        } catch (e) {
+          console.error(`[Sweep] ⚠️ reminder failed for ${u.email}:`, e.message);
+        }
+      }
+
+      // Past grace period — fall back to Free tier.
+      if (daysPastExpiry > GRACE_DAYS) {
+        try {
+          await docSnap.ref.update({
+            plan: 'free', planStatus: 'expired', downgradedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          if (u.email) {
+            const html = buildDowngradedEmailHtml({ fullName: u.fullName, businessName: u.businessName });
+            await resend.emails.send({
+              from: FROM_EMAIL, to: [u.email], reply_to: 'radiexpense@slirus.com',
+              subject: `Your RadiExpense account is now on the Free tier`,
+              html,
+            });
+          }
+          downgrades++;
+        } catch (e) {
+          console.error(`[Sweep] ⚠️ downgrade failed for uid ${docSnap.id}:`, e.message);
+        }
+      }
+    }
+    console.log(`[Sweep] checked ${checked} Pro accounts | ${reminders} reminder(s) sent | ${downgrades} downgraded`);
+  } catch (err) {
+    console.error('[Sweep] ❌ subscription sweep failed:', err.message);
+  }
+}
+
+// Runs every 6 hours — frequent enough that the 3-day reminder and the
+// grace-period fallback both land within hours of crossing their threshold,
+// without hammering Firestore.
+cron.schedule('0 */6 * * *', runSubscriptionSweep);
+// Also run once at boot so a redeploy doesn't leave accounts waiting up to 6h.
+runSubscriptionSweep();
 
 // ─── Render free-tier keep-alive ────────────────────────────────────────────
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
