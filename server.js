@@ -937,7 +937,9 @@ app.post('/api/create-staff-account', async (req, res) => {
       email, password, displayName: name, emailVerified: false,
     });
 
-    const staffRef = await db.collection('staff').add({
+    const batch = db.batch();
+    const staffRef = db.collection('staff').doc();
+    batch.set(staffRef, {
       uid: ownerUid,            // owner scope — used by the `where('uid', '==', ...)` query
       createdBy: ownerUid,      // creator keeps admin rights over this record
       authUid: userRecord.uid,
@@ -945,6 +947,14 @@ app.post('/api/create-staff-account', async (req, res) => {
       createdAt: Date.now(),
       attendance: [],
     });
+    // Lookup doc firestore.rules reads via get() to resolve "which business
+    // does this signed-in uid belong to" — see myBusinessUid() there. Doc ID
+    // IS the team member's own Auth uid so rules can fetch it directly
+    // without needing a where() query (which rules can't run).
+    batch.set(db.collection('staffLinks').doc(userRecord.uid), {
+      ownerUid, staffId: staffRef.id, role, name, createdAt: Date.now(),
+    });
+    await batch.commit();
 
     const html = buildStaffWelcomeEmailHtml({ name, email, password, role, businessName: ownerBusinessName || 'your team', loginUrl: loginUrl || 'https://radiexpense.slirus.com/login' });
     const { error } = await resend.emails.send({
@@ -998,7 +1008,17 @@ app.post('/api/delete-staff-account', async (req, res) => {
   if (!authUid) return res.status(400).json({ error: 'authUid is required.' });
 
   try {
-    await authAdmin.deleteUser(authUid);
+    try {
+      await authAdmin.deleteUser(authUid);
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') throw err;
+      // Already gone from Auth — still fall through to clean up staffLinks below.
+    }
+    // Remove the businessUid lookup doc firestore.rules relies on — without
+    // this an offboarded team member's Auth uid (if it were ever reused)
+    // could theoretically resolve back into the old business's scope.
+    await db.collection('staffLinks').doc(authUid).delete().catch(() => {});
+
     if (email && emailPattern.test(email)) {
       const html = buildStaffRemovedEmailHtml({ name, businessName: businessName || 'the business' });
       resend.emails.send({
@@ -1008,8 +1028,6 @@ app.post('/api/delete-staff-account', async (req, res) => {
     console.log(`[Staff] ✅ deleted auth account ${authUid}`);
     return res.status(200).json({ success: true });
   } catch (err) {
-    // If the Auth user is already gone, treat as success so the UI can still clean up its Firestore doc.
-    if (err.code === 'auth/user-not-found') return res.status(200).json({ success: true });
     console.error('[Staff] ❌ delete-staff-account failed:', err.message);
     return res.status(500).json({ error: NODE_ENV === 'production' ? 'Could not remove staff login.' : err.message });
   }
