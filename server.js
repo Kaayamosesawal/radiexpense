@@ -3,7 +3,9 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import { Resend } from 'resend';
-import admin from 'firebase-admin';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import cron from 'node-cron';
 
 // ─── Validate required environment variables on startup ───────────────────
@@ -27,15 +29,23 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // subscription-expiry sweep below (Firestore). FIREBASE_PRIVATE_KEY is stored
 // with literal "\n" sequences in most dashboards (Render, Vercel, etc.), so
 // it has to be un-escaped before use.
-admin.initializeApp({
-  credential: admin.credential.cert({
+//
+// NOTE: uses the modular `firebase-admin/app`, `/auth`, `/firestore` entry
+// points rather than `import admin from 'firebase-admin'` — the old
+// namespace-style default import doesn't reliably expose `.credential`,
+// `.firestore()`, `.auth()` under Node ESM (`"type": "module"`), which is
+// what throws "Cannot read properties of undefined (reading 'cert')" at
+// startup. The modular imports are firebase-admin's own recommended way to
+// use the SDK from ESM and avoid that interop issue entirely.
+const firebaseApp = initializeApp({
+  credential: cert({
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   }),
 });
-const db = admin.firestore();
-const authAdmin = admin.auth();
+const db = getFirestore(firebaseApp);
+const authAdmin = getAuth(firebaseApp);
 
 const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL        || 'kaayamoses15@gmail.com';
@@ -1129,7 +1139,7 @@ async function runSubscriptionSweep() {
       if (daysPastExpiry > GRACE_DAYS) {
         try {
           await docSnap.ref.update({
-            plan: 'free', planStatus: 'expired', downgradedAt: admin.firestore.FieldValue.serverTimestamp(),
+            plan: 'free', planStatus: 'expired', downgradedAt: FieldValue.serverTimestamp(),
           });
           if (u.email) {
             const html = buildDowngradedEmailHtml({ fullName: u.fullName, businessName: u.businessName });
