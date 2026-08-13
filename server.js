@@ -48,7 +48,7 @@ const db = getFirestore(firebaseApp);
 const authAdmin = getAuth(firebaseApp);
 
 const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
-const ADMIN_EMAIL  = process.env.ADMIN_EMAIL        || 'kaayamoses15@gmail.com';
+const ADMIN_EMAIL  = process.env.ADMIN_EMAIL        || 'slirushub@gmail.com';
 const PORT         = process.env.PORT               || 4000;
 const NODE_ENV     = process.env.NODE_ENV           || 'development';
 
@@ -177,7 +177,7 @@ function buildWelcomeEmailHtml({ fullName, email, businessName, plan }) {
           © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
-          P.O Box 331921, Lira - Uganda
+          P.O Box 331921, Juba Road, Lira, Uganda
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 8px;">
           You're receiving this because you created an account at
@@ -301,7 +301,7 @@ function buildUpgradeEmailHtml({ fullName, email, businessName }) {
           © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
-          Plot 14, Lira City, Northern Region, Uganda
+          P.O Box 331921, Juba Road, Lira, Uganda
         </p>
         <p style="font-size:11px;color:#9CA3AF;margin:0 0 8px;">
           You're receiving this because you upgraded your account at
@@ -361,7 +361,7 @@ app.post('/api/send-welcome-email', async (req, res) => {
       'Need help? Reply to this email or contact us at radiexpense@slirus.com',
       '',
       '---',
-      `© ${new Date().getFullYear()} RadiExpense · Plot 14, Lira City, Northern Region, Uganda`,
+      `© ${new Date().getFullYear()} RadiExpense · P.O Box 331921, Juba Road, Lira, Uganda`,
       'You received this because you created an account at radiexpense.slirus.com.',
       
     ].join('\n');
@@ -374,10 +374,12 @@ app.post('/api/send-welcome-email', async (req, res) => {
       html,
       text,
       headers: {
-        // Precedence: bulk tells smart clients this is transactional, not mass spam
-        'Precedence': 'bulk',
-        // List-button
-       'X-Entity-Ref-ID': `welcome-${Date.now()}`,
+        // NOTE: deliberately NOT setting "Precedence: bulk" — that header is
+        // what causes Gmail/Outlook to (a) show an auto "Unsubscribe" link
+        // next to the sender and (b) nudge spam filters toward treating this
+        // as bulk/newsletter mail. This is a 1:1 transactional email, so we
+        // omit it entirely to keep it out of Spam and unsubscribe-link-free.
+        'X-Entity-Ref-ID': `welcome-${Date.now()}`,
       },
     });
 
@@ -394,6 +396,90 @@ app.post('/api/send-welcome-email', async (req, res) => {
       message: NODE_ENV === 'production'
         ? 'Failed to send welcome email. Please try again later.'
         : err.message,
+    });
+  }
+});
+
+/**
+ * Builds the HTML body for the branded email-verification message.
+ * This REPLACES Firebase Auth's own built-in verification email (sent from
+ * noreply@<project>.firebaseapp.com), which is what was landing in Spam —
+ * see buildWelcomeEmailHtml above for why: an unrecognized firebaseapp.com
+ * sending domain has no reputation with Gmail, so it gets flagged. Sending
+ * the verification link ourselves through Resend, from the same
+ * radiexpense@slirus.com address the welcome/upgrade emails already use
+ * successfully, keeps it out of Spam and on-brand.
+ */
+function buildVerifyEmailHtml({ fullName, verifyUrl }) {
+  const firstName = (fullName || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Verify your RadiExpense email</title></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:40px 32px;text-align:center;">
+        <h1 style="color:#ffffff;font-size:24px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">Verify your email, ${firstName}</h1>
+        <p style="color:rgba(255,255,255,0.85);font-size:14px;margin:0;">One click and you're all set.</p>
+      </div>
+      <div style="padding:40px 32px;">
+        <p style="font-size:15px;color:#374151;line-height:1.7;margin:0 0 20px;">Hi <strong>${fullName || 'there'}</strong>,</p>
+        <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 28px;">
+          Please confirm this is your email address to finish setting up your RadiExpense account.
+        </p>
+        <div style="text-align:center;margin-bottom:20px;">
+          <a href="${verifyUrl}" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;">Verify Email →</a>
+        </div>
+        <p style="font-size:12px;color:#9CA3AF;text-align:center;">If you didn't ask to verify this address, you can ignore this email.</p>
+      </div>
+      <div style="background:#F9FAFB;padding:24px 32px;text-align:center;border-top:1px solid #F3F4F6;">
+        <p style="font-size:11px;color:#9CA3AF;margin:0;">© ${new Date().getFullYear()} RadiExpense — A product of Slirus Holdings</p>
+      </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/**
+ * POST /api/send-verification-email
+ * Body: { email, fullName }
+ * Generates the verification link via Firebase Admin (so no Firebase Auth
+ * email is ever sent) and delivers it ourselves through Resend instead —
+ * this is the fix for the "post-registration email lands in Spam" issue,
+ * since the built-in Firebase Auth verify email was the one Gmail flagged.
+ * Call this from the sign-up flow INSTEAD OF the client-side
+ * `sendEmailVerification()` Firebase Auth call.
+ */
+app.post('/api/send-verification-email', async (req, res) => {
+  const { email, fullName } = req.body || {};
+  if (!email || !emailPattern.test(email)) {
+    return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+  }
+
+  try {
+    const verifyUrl = await authAdmin.generateEmailVerificationLink(email, {
+      url: 'https://radiexpense.slirus.com/login',
+    });
+    const html = buildVerifyEmailHtml({ fullName, verifyUrl });
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [email],
+      reply_to: 'radiexpense@slirus.com',
+      subject: 'Verify your email for RadiExpense',
+      html,
+      headers: { 'X-Entity-Ref-ID': `verify-${Date.now()}` },
+    });
+    if (error) throw new Error(error.message || 'Resend API error');
+
+    console.log(`[Email] ✅ verification email → ${email} | messageId: ${data?.id}`);
+    return res.status(200).json({ success: true, id: data?.id });
+  } catch (err) {
+    console.error(`[Email] ❌ Failed to send verification email → ${email}:`, err.message);
+    return res.status(500).json({
+      success: false,
+      message: NODE_ENV === 'production' ? 'Failed to send verification email.' : err.message,
     });
   }
 });
@@ -448,7 +534,7 @@ app.post('/api/send-upgrade-email', async (req, res) => {
       'Need help? Reply to this email or contact us at radiexpense@slirus.com',
       '',
       '---',
-      `© ${new Date().getFullYear()} RadiExpense · Plot 14, Lira City, Northern Region, Uganda`,
+      `© ${new Date().getFullYear()} RadiExpense · P.O Box 331921, Juba Road, Lira, Uganda`,
       'You received this because you upgraded your account at radiexpense.slirus.com.',
       
     ].join('\n');
@@ -461,8 +547,8 @@ app.post('/api/send-upgrade-email', async (req, res) => {
       html,
       text,
       headers: {
-        // Precedence: bulk tells smart clients this is transactional, not mass spam
-        'Precedence': 'bulk',
+        // See note in /api/send-welcome-email — no "Precedence: bulk" here
+        // either, for the same spam / auto-unsubscribe-link reasons.
         'X-Entity-Ref-ID': `upgrade-${Date.now()}`,
       },
     });
@@ -825,7 +911,7 @@ function buildAdminPaymentNotificationHtml({ uid, fullName, email, businessName,
  * Body: { uid, fullName, email, businessName, provider, billingCycle, amount, ussdCode }
  *
  * Called by OnboardingPro.jsx when a user taps "I've Made the Payment".
- * Sends a rich HTML notification email to the admin (kaayamoses15@gmail.com)
+ * Sends a rich HTML notification email to the admin (slirushub@gmail.com)
  * with all payment details and a direct link to the user's Firestore doc.
  * The admin verifies in the MTN/Airtel portal and then sets
  *   planStatus: 'active' + paidAt in Firestore to unlock Pro for the user.
@@ -1064,6 +1150,37 @@ app.post('/api/send-pro-activated-email', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: NODE_ENV === 'production' ? 'Failed to send confirmation email.' : err.message,
+    });
+  }
+});
+
+/**
+ * POST /api/send-downgraded-email
+ * Manual counterpart to the automatic sweep's downgrade email — used when
+ * an admin manually "cuts off" (deactivates) a Pro subscriber from the
+ * Payment Manager, rather than waiting for the grace period to lapse.
+ */
+app.post('/api/send-downgraded-email', async (req, res) => {
+  const { fullName, email, businessName } = req.body || {};
+  if (!email || !emailPattern.test(email)) {
+    return res.status(400).json({ success: false, message: 'A valid email address is required.' });
+  }
+
+  try {
+    const html = buildDowngradedEmailHtml({ fullName, businessName });
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL, to: [email], reply_to: 'radiexpense@slirus.com',
+      subject: `Your RadiExpense account is now on the Free tier`,
+      html,
+    });
+    if (error) throw new Error(error.message || 'Resend API error');
+    console.log(`[Email] ✅ downgraded email → ${email}`);
+    return res.status(200).json({ success: true, id: data?.id });
+  } catch (err) {
+    console.error(`[Email] ❌ Failed to send downgraded email → ${email}:`, err.message);
+    return res.status(500).json({
+      success: false,
+      message: NODE_ENV === 'production' ? 'Failed to send notification email.' : err.message,
     });
   }
 });
