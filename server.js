@@ -48,6 +48,11 @@ const db = getFirestore(firebaseApp);
 const authAdmin = getAuth(firebaseApp);
 
 const FROM_EMAIL   = process.env.RESEND_FROM_EMAIL || 'RadiExpense <radiexpense@slirus.com>';
+// ↑ radiexpense@slirus.com is the sending address for every email this
+// server sends (welcome, verification, upgrade, staff, admin alerts).
+// It's a Slirus Holdings domain address that forwards to/is monitored via
+// slirushub@gmail.com — do not point this at a firebaseapp.com or other
+// unverified sending domain, since that's what causes emails to land in Spam.
 const ADMIN_EMAIL  = process.env.ADMIN_EMAIL        || 'slirushub@gmail.com';
 const PORT         = process.env.PORT               || 4000;
 const NODE_ENV     = process.env.NODE_ENV           || 'development';
