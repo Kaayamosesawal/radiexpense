@@ -415,105 +415,35 @@ app.post('/api/send-welcome-email', async (req, res) => {
  * radiexpense@slirus.com address the welcome/upgrade emails already use
  * successfully, keeps it out of Spam and on-brand.
  */
-function buildVerifyEmailHtml({ fullName, email, verifyUrl }) {
+function buildVerifyEmailHtml({ fullName, verifyUrl }) {
   const firstName = (fullName || '').trim().split(' ')[0] || 'there';
   return `
     <!DOCTYPE html>
-    <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <meta name="x-apple-disable-message-reformatting">
-      <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
-      <title>Verify your email for RadiExpense</title>
-    </head>
-    <body style="margin:0;padding:0;background-color:#F3F4F6;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+    <html lang="en">
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Verify your RadiExpense email</title></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
       <tr><td align="center">
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
       <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:40px 32px;text-align:center;">
-        <!-- Logo block -->
-        <div style="margin-bottom:20px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
-            <tr>
-              <td style="background:#ffffff;border-radius:16px;padding:10px 18px;display:inline-block;">
-                <table role="presentation" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td style="vertical-align:middle;padding-right:10px;">
-                      <img src="https://radiexpense.slirus.com/logo1.png"
-                           alt="RadiExpense"
-                           width="40" height="40"
-                           style="display:block;border-radius:10px;object-fit:cover;border:0;" />
-                    </td>
-                    <td style="vertical-align:middle;">
-                      <span style="font-size:20px;font-weight:900;color:#1F2937;letter-spacing:-0.5px;font-family:'Helvetica Neue',Arial,sans-serif;">
-                        Radi<span style="color:#FF6B2B;">Expense</span>
-                      </span>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </div>
-        <h1 style="color:#ffffff;font-size:26px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">
-          Verify your email, ${firstName}
-        </h1>
-        <p style="color:rgba(255,255,255,0.85);font-size:15px;margin:0;">
-          One click and you're all set.
-        </p>
+        <h1 style="color:#ffffff;font-size:24px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">Verify your email, ${firstName}</h1>
+        <p style="color:rgba(255,255,255,0.85);font-size:14px;margin:0;">One click and you're all set.</p>
       </div>
-
       <div style="padding:40px 32px;">
-        <p style="font-size:16px;color:#374151;line-height:1.7;margin:0 0 20px;text-align:justify;">
-          Hi <strong>${fullName || 'there'}</strong>,
-        </p>
-        <p style="font-size:15px;color:#6B7280;line-height:1.7;margin:0 0 28px;text-align:justify;">
+        <p style="font-size:15px;color:#374151;line-height:1.7;margin:0 0 20px;">Hi <strong>${fullName || 'there'}</strong>,</p>
+        <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 28px;">
           Please confirm this is your email address to finish setting up your RadiExpense account.
-          Once verified, you'll have full access to your dashboard and can start managing and
-          growing your business finances right away.
         </p>
-
-        <div style="background:#FFF7F3;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
-          <p style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#9CA3AF;margin:0 0 10px;">
-            Account details
-          </p>
-          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Name:</strong> ${fullName || 'there'}</p>
-          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Email:</strong> ${email || ''}</p>
+        <div style="text-align:center;margin-bottom:20px;">
+          <a href="${verifyUrl}" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;">Verify Email →</a>
         </div>
-
-        <div style="text-align:center;margin-top:8px;">
-          <a href="${verifyUrl}"
-             style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;letter-spacing:0.3px;box-shadow:0 4px 20px rgba(255,107,43,0.35);">
-            Verify Email →
-          </a>
-        </div>
-
-        <p style="font-size:13px;color:#9CA3AF;text-align:justify;margin-top:28px;line-height:1.6;">
-          If you didn't ask to verify this address, you can safely ignore this email — your
-          address will not be used again. Need help? <a href="mailto:radiexpense@slirus.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">radiexpense@slirus.com</a>
-        </p>
+        <p style="font-size:12px;color:#9CA3AF;text-align:center;">If you didn't ask to verify this address, you can ignore this email.</p>
       </div>
-
-      <div style="background:#F9FAFB;padding:24px 32px;text-align:justify;border-top:1px solid #F3F4F6;">
-        <p style="font-size:12px;color:#9CA3AF;margin:0 0 8px;">
-          © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
-        </p>
-        <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
-          P.O Box 331921, Juba Road, Lira, Uganda
-        </p>
-        <p style="font-size:11px;color:#9CA3AF;margin:0;">
-          You're receiving this because you created an account at
-          <a href="https://radiexpense.slirus.com" style="color:#FF6B2B;text-decoration:none;">radiexpense.slirus.com</a>.
-        </p>
+      <div style="background:#F9FAFB;padding:24px 32px;text-align:center;border-top:1px solid #F3F4F6;">
+        <p style="font-size:11px;color:#9CA3AF;margin:0;">© ${new Date().getFullYear()} RadiExpense — A product of Slirus Holdings</p>
       </div>
     </div>
-    </td></tr>
-    </table>
-    </body>
-    </html>
-  `;
+    </td></tr></table></body></html>`;
 }
 
 /**
@@ -536,7 +466,7 @@ app.post('/api/send-verification-email', async (req, res) => {
     const verifyUrl = await authAdmin.generateEmailVerificationLink(email, {
       url: 'https://radiexpense.slirus.com/login',
     });
-    const html = buildVerifyEmailHtml({ fullName, email, verifyUrl });
+    const html = buildVerifyEmailHtml({ fullName, verifyUrl });
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
@@ -664,6 +594,53 @@ const formatExpiryEAT = (date) =>
     weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   }) + ' EAT';
+
+// ─── Admin request verification ────────────────────────────────────────────
+// Verifies the caller is BOTH a valid signed-in Firebase user AND listed in
+// the `admins` collection. Client sends `Authorization: Bearer <idToken>`
+// (PaymentManager.jsx gets this from `currentUser.getIdToken()`). None of
+// the other endpoints in this file check this today (they rely on CORS +
+// Firestore Security Rules downstream), but permanently deleting a whole
+// business account — its Firebase Auth login, every team member's login,
+// and every Firestore record it owns — is destructive and irreversible
+// enough to warrant an explicit server-side admin check before running.
+async function verifyAdminRequest(req, res, next) {
+  const header = req.headers.authorization || '';
+  const idToken = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!idToken) return res.status(401).json({ success: false, error: 'Missing Authorization bearer token.' });
+
+  try {
+    const decoded = await authAdmin.verifyIdToken(idToken);
+    const adminDoc = await db.collection('admins').doc(decoded.uid).get();
+    if (!adminDoc.exists) {
+      return res.status(403).json({ success: false, error: 'This account is not authorized to perform admin actions.' });
+    }
+    req.adminUid = decoded.uid;
+    req.adminEmail = decoded.email || null;
+    next();
+  } catch (err) {
+    console.error('[Auth] ❌ verifyAdminRequest failed:', err.message);
+    return res.status(401).json({ success: false, error: 'Invalid or expired session — please sign in again.' });
+  }
+}
+
+/**
+ * Deletes every doc in `collectionName` whose `uid` field matches `uid`,
+ * chunked at 450 deletes per batch (Firestore's hard cap is 500 writes per
+ * batch — 450 leaves headroom). Used by /api/delete-account to cascade a
+ * full account deletion across every per-business collection.
+ */
+async function deleteWhereUid(collectionName, uid) {
+  const snap = await db.collection(collectionName).where('uid', '==', uid).get();
+  const docs = snap.docs;
+  for (let i = 0; i < docs.length; i += 450) {
+    const chunk = docs.slice(i, i + 450);
+    const batch = db.batch();
+    chunk.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+  return docs.length;
+}
 
 /**
  * Builds the HTML body for a new team member's login-credentials email.
@@ -849,6 +826,35 @@ function buildDowngradedEmailHtml({ fullName, businessName }) {
       <div style="text-align:center;margin-top:20px;">
         <a href="https://radiexpense.slirus.com/login" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:14px 36px;border-radius:50px;text-decoration:none;">Renew Pro →</a>
       </div>
+    </div>
+    </td></tr></table></body></html>`;
+}
+
+/**
+ * Builds the HTML body for the "your account has been permanently deleted"
+ * farewell email — sent by /api/delete-account right after the cascade
+ * delete completes.
+ */
+function buildAccountDeletedEmailHtml({ fullName, businessName }) {
+  const firstName = (fullName || '').trim().split(' ')[0] || 'there';
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;font-family:'Helvetica Neue',Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
+      <tr><td align="center">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;padding:32px;">
+      <p style="font-size:15px;color:#374151;">Hi ${firstName},</p>
+      <p style="font-size:14px;color:#6B7280;line-height:1.7;">
+        This confirms that <strong>${businessName || 'your RadiExpense account'}</strong> and all of its data —
+        expenses, products, savings, loans, customers, and team access — has been permanently deleted from
+        RadiExpense. This action cannot be undone.
+      </p>
+      <p style="font-size:14px;color:#6B7280;line-height:1.7;">
+        If you didn't request this, or believe it was done in error, please contact us right away at
+        <a href="mailto:radiexpense@slirus.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">radiexpense@slirus.com</a>.
+      </p>
     </div>
     </td></tr></table></body></html>`;
 }
@@ -1256,6 +1262,91 @@ app.post('/api/send-downgraded-email', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: NODE_ENV === 'production' ? 'Failed to send notification email.' : err.message,
+    });
+  }
+});
+
+// ─── POST /api/delete-account ──────────────────────────────────────────────
+// Body: { uid }. Header: Authorization: Bearer <admin idToken> (see
+// verifyAdminRequest above). Permanently deletes a business account: its
+// Firebase Auth login, every team member's Firebase Auth login + staffLinks
+// doc, and every Firestore record scoped to that business (expenses,
+// products, savings, loans, customers, customerLedger, staff, suppliers,
+// purchaseOrders, budgets, auditLogs, aiInsights, personalTransactions,
+// personalBudget, upgradeRequests) before removing users/{uid} itself.
+//
+// `payments/{id}` docs are deliberately left untouched — firestore.rules
+// denies deleting them even for admins (they're the audit trail behind
+// every approval/rejection: "No one deletes payment history — admins
+// included"), so they stay in place as an orphaned-but-preserved record
+// after the account is gone. This mirrors the same reasoning PaymentManager
+// already follows for reject/cut-off.
+//
+// This can only be reached with a valid admin idToken (verifyAdminRequest) —
+// unlike every other endpoint in this file, which trusts the client (see the
+// note on verifyAdminRequest itself for why this one endpoint is different.
+app.post('/api/delete-account', verifyAdminRequest, async (req, res) => {
+  const { uid } = req.body || {};
+  if (!uid) return res.status(400).json({ success: false, error: 'uid is required.' });
+
+  try {
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists) {
+      return res.status(404).json({ success: false, error: 'No account found for that uid.' });
+    }
+    const userData = userSnap.data();
+
+    // 1. Offboard every team member first — same mechanics as
+    //    /api/delete-staff-account, just looped across the whole roster.
+    const staffSnap = await db.collection('staff').where('uid', '==', uid).get();
+    for (const staffDoc of staffSnap.docs) {
+      const staff = staffDoc.data();
+      if (staff.authUid) {
+        await authAdmin.deleteUser(staff.authUid).catch(err => {
+          if (err.code !== 'auth/user-not-found') console.warn(`[Delete] staff auth delete failed (${staff.authUid}):`, err.message);
+        });
+        await db.collection('staffLinks').doc(staff.authUid).delete().catch(() => {});
+      }
+    }
+    if (!staffSnap.empty) await deleteWhereUid('staff', uid);
+
+    // 2. Every other per-business collection.
+    const businessCollections = [
+      'expenses', 'products', 'savings', 'loans', 'customers', 'customerLedger',
+      'suppliers', 'purchaseOrders', 'budgets', 'auditLogs', 'aiInsights',
+    ];
+    for (const col of businessCollections) {
+      await deleteWhereUid(col, uid);
+    }
+
+    // 3. Owner-only docs.
+    await deleteWhereUid('personalTransactions', uid);
+    await db.collection('personalBudget').doc(uid).delete().catch(() => {});
+    await db.collection('upgradeRequests').doc(uid).delete().catch(() => {});
+
+    // 4. The account doc itself.
+    await db.collection('users').doc(uid).delete();
+
+    // 5. The owner's own Firebase Auth login.
+    await authAdmin.deleteUser(uid).catch(err => {
+      if (err.code !== 'auth/user-not-found') throw err;
+    });
+
+    // 6. Best-effort farewell email — fire-and-forget, never blocks the delete.
+    if (userData?.email && emailPattern.test(userData.email)) {
+      const html = buildAccountDeletedEmailHtml({ fullName: userData.fullName, businessName: userData.businessName });
+      resend.emails.send({
+        from: FROM_EMAIL, to: [userData.email], subject: 'Your RadiExpense account has been deleted', html,
+      }).catch(e => console.warn('[Delete] farewell email failed:', e.message));
+    }
+
+    console.log(`[Delete] ✅ account ${uid} permanently deleted by admin ${req.adminEmail || req.adminUid}`);
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(`[Delete] ❌ delete-account failed for ${uid}:`, err.message);
+    return res.status(500).json({
+      success: false,
+      error: NODE_ENV === 'production' ? 'Could not delete this account.' : err.message,
     });
   }
 });
