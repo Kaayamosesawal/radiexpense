@@ -415,35 +415,105 @@ app.post('/api/send-welcome-email', async (req, res) => {
  * radiexpense@slirus.com address the welcome/upgrade emails already use
  * successfully, keeps it out of Spam and on-brand.
  */
-function buildVerifyEmailHtml({ fullName, verifyUrl }) {
+function buildVerifyEmailHtml({ fullName, email, verifyUrl }) {
   const firstName = (fullName || '').trim().split(' ')[0] || 'there';
   return `
     <!DOCTYPE html>
-    <html lang="en">
-    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Verify your RadiExpense email</title></head>
-    <body style="margin:0;padding:0;background-color:#F3F4F6;">
+    <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="x-apple-disable-message-reformatting">
+      <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no">
+      <title>Verify your email for RadiExpense</title>
+    </head>
+    <body style="margin:0;padding:0;background-color:#F3F4F6;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F4F6;padding:32px 16px;">
       <tr><td align="center">
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
       <div style="background:linear-gradient(135deg,#FF6B2B 0%,#FF8C42 100%);padding:40px 32px;text-align:center;">
-        <h1 style="color:#ffffff;font-size:24px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">Verify your email, ${firstName}</h1>
-        <p style="color:rgba(255,255,255,0.85);font-size:14px;margin:0;">One click and you're all set.</p>
-      </div>
-      <div style="padding:40px 32px;">
-        <p style="font-size:15px;color:#374151;line-height:1.7;margin:0 0 20px;">Hi <strong>${fullName || 'there'}</strong>,</p>
-        <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 28px;">
-          Please confirm this is your email address to finish setting up your RadiExpense account.
-        </p>
-        <div style="text-align:center;margin-bottom:20px;">
-          <a href="${verifyUrl}" style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;">Verify Email →</a>
+        <!-- Logo block -->
+        <div style="margin-bottom:20px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+            <tr>
+              <td style="background:#ffffff;border-radius:16px;padding:10px 18px;display:inline-block;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align:middle;padding-right:10px;">
+                      <img src="https://radiexpense.slirus.com/logo1.png"
+                           alt="RadiExpense"
+                           width="40" height="40"
+                           style="display:block;border-radius:10px;object-fit:cover;border:0;" />
+                    </td>
+                    <td style="vertical-align:middle;">
+                      <span style="font-size:20px;font-weight:900;color:#1F2937;letter-spacing:-0.5px;font-family:'Helvetica Neue',Arial,sans-serif;">
+                        Radi<span style="color:#FF6B2B;">Expense</span>
+                      </span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </div>
-        <p style="font-size:12px;color:#9CA3AF;text-align:center;">If you didn't ask to verify this address, you can ignore this email.</p>
+        <h1 style="color:#ffffff;font-size:26px;font-weight:900;margin:0 0 8px;letter-spacing:-0.5px;">
+          Verify your email, ${firstName}
+        </h1>
+        <p style="color:rgba(255,255,255,0.85);font-size:15px;margin:0;">
+          One click and you're all set.
+        </p>
       </div>
-      <div style="background:#F9FAFB;padding:24px 32px;text-align:center;border-top:1px solid #F3F4F6;">
-        <p style="font-size:11px;color:#9CA3AF;margin:0;">© ${new Date().getFullYear()} RadiExpense — A product of Slirus Holdings</p>
+
+      <div style="padding:40px 32px;">
+        <p style="font-size:16px;color:#374151;line-height:1.7;margin:0 0 20px;text-align:justify;">
+          Hi <strong>${fullName || 'there'}</strong>,
+        </p>
+        <p style="font-size:15px;color:#6B7280;line-height:1.7;margin:0 0 28px;text-align:justify;">
+          Please confirm this is your email address to finish setting up your RadiExpense account.
+          Once verified, you'll have full access to your dashboard and can start managing and
+          growing your business finances right away.
+        </p>
+
+        <div style="background:#FFF7F3;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
+          <p style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#9CA3AF;margin:0 0 10px;">
+            Account details
+          </p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Name:</strong> ${fullName || 'there'}</p>
+          <p style="font-size:14px;color:#374151;margin:4px 0;"><strong>Email:</strong> ${email || ''}</p>
+        </div>
+
+        <div style="text-align:center;margin-top:8px;">
+          <a href="${verifyUrl}"
+             style="display:inline-block;background:linear-gradient(135deg,#FF6B2B,#FF8C42);color:#ffffff;font-size:15px;font-weight:900;padding:16px 40px;border-radius:50px;text-decoration:none;letter-spacing:0.3px;box-shadow:0 4px 20px rgba(255,107,43,0.35);">
+            Verify Email →
+          </a>
+        </div>
+
+        <p style="font-size:13px;color:#9CA3AF;text-align:justify;margin-top:28px;line-height:1.6;">
+          If you didn't ask to verify this address, you can safely ignore this email — your
+          address will not be used again. Need help? <a href="mailto:radiexpense@slirus.com" style="color:#FF6B2B;font-weight:700;text-decoration:none;">radiexpense@slirus.com</a>
+        </p>
+      </div>
+
+      <div style="background:#F9FAFB;padding:24px 32px;text-align:justify;border-top:1px solid #F3F4F6;">
+        <p style="font-size:12px;color:#9CA3AF;margin:0 0 8px;">
+          © ${new Date().getFullYear()} RadiExpense &mdash; A product of Slirus Holdings
+        </p>
+        <p style="font-size:11px;color:#9CA3AF;margin:0 0 6px;">
+          P.O Box 331921, Juba Road, Lira, Uganda
+        </p>
+        <p style="font-size:11px;color:#9CA3AF;margin:0;">
+          You're receiving this because you created an account at
+          <a href="https://radiexpense.slirus.com" style="color:#FF6B2B;text-decoration:none;">radiexpense.slirus.com</a>.
+        </p>
       </div>
     </div>
-    </td></tr></table></body></html>`;
+    </td></tr>
+    </table>
+    </body>
+    </html>
+  `;
 }
 
 /**
@@ -466,7 +536,7 @@ app.post('/api/send-verification-email', async (req, res) => {
     const verifyUrl = await authAdmin.generateEmailVerificationLink(email, {
       url: 'https://radiexpense.slirus.com/login',
     });
-    const html = buildVerifyEmailHtml({ fullName, verifyUrl });
+    const html = buildVerifyEmailHtml({ fullName, email, verifyUrl });
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
